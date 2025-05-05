@@ -31,8 +31,8 @@ int ThrottleCutOff = 1000;
 Servo mot1;
 Servo mot2;
 
-const int mot1_pin = 9;
-const int mot2_pin = 6;
+const int mot1_pin = 6;
+const int mot2_pin = 9;
 
 // Time step (seconds)
 const float t = 0.004; 
