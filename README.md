@@ -12,3 +12,4 @@ This is repository for EESP32_S3_Bicopter_Flight_Controller Drone. This is meant
 | A2212/15T 930KV               | 2            |
 | Jumpter T-Lite V2 transmitter | 1            |
 | Lipo 4S Battery               | 1            |
+| 3 blades 5 inch propeller     | 2            |
