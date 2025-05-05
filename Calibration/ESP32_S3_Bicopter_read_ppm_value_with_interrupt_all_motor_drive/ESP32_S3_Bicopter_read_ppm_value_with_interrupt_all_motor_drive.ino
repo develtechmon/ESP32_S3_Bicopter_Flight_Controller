@@ -20,7 +20,8 @@ volatile int ReceiverValue[NUM_CHANNELS] = {1500,1500,1000,1500,1500,1500,1500,1
 volatile int channelIndex = 0;
 volatile unsigned long lastTime = 0;
 
-int ESCfreq = 500;
+// Changed ESC frequency to 400Hz - better for BLHeli_S
+int ESCfreq = 400; // 
 int channelValues[NUM_CHANNELS];
 
 // Throttle limits
