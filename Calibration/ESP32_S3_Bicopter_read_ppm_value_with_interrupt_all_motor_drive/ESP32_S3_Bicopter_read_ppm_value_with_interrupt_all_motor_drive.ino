@@ -76,24 +76,24 @@ void setup() {
     // ----- Setup ESP32 PWM Timers for Motor ESCs -----
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
-  // ----- Attach Motors -----
-  delay(1000);
+
+  Serial.println("Starting ESC initialization sequence...");
+  delay(3000); // Give time for ESCs to power up
+  
+  // ----- Attach Motors with correct range and frequency -----
   mot1.attach(mot1_pin, 1000, 2000);
-  delay(1000);
-  mot1.setPeriodHertz(ESCfreq);
-  delay(100);
-  
   mot2.attach(mot2_pin, 1000, 2000);
-  delay(1000);
+
+  // Set PWM frequency - BLHeli_S works better at 400Hz or lower
+  mot1.setPeriodHertz(ESCfreq);
   mot2.setPeriodHertz(ESCfreq);
-  delay(100);
-  
+    
   // Initialize motors to low throttle
   mot1.writeMicroseconds(1000);
   mot2.writeMicroseconds(1000);
-  delay(500);
-
-    // Wait until a valid throttle reading is received via PPM (channel index 2)
+  delay(4000);
+  
+  // Wait until a valid throttle reading is received via PPM (channel index 2)
 
   while (true) {
     read_receiver(channelValues);
@@ -109,6 +109,11 @@ void loop() {
 
   InputThrottle = channelValues[2];
 
+  // Limit to this range
+  // MotorInput1 = constrain(InputThrottle, 1000, 1800);
+  // MotorInput2 = constrain(InputThrottle, 1000, 1800);
+
+  // Full range
   MotorInput1 = InputThrottle;
   MotorInput2 = InputThrottle;
 
