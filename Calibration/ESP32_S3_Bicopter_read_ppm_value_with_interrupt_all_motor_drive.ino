@@ -3,7 +3,7 @@
 #include <math.h>
 
 // ===== PPM Definitions =====
-#define PPM_PIN 10             // Pin where the PPM signal is connected
+#define PPM_PIN 13             // Pin where the PPM signal is connected
 #define NUM_CHANNELS 8         // Total number of channels in the PPM stream
 #define PPM_SYNC_THRESHOLD 3000 // Pulse width (µs) above which a sync pulse is assumed
 #define CHANNEL_MIN 1000       // Minimum valid pulse width (µs)
@@ -29,12 +29,9 @@ int ThrottleCutOff = 1000;
 // Servo objects to control motors
 Servo mot1;
 Servo mot2;
-Servo mot3;
-Servo mot4;
-const int mot1_pin = 2;
-const int mot2_pin = 3;
-const int mot3_pin = 4;
-const int mot4_pin = 21;
+
+const int mot1_pin = 9;
+const int mot2_pin = 6;
 
 // Time step (seconds)
 const float t = 0.004; 
@@ -77,33 +74,21 @@ void setup() {
     // ----- Setup ESP32 PWM Timers for Motor ESCs -----
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
-  ESP32PWM::allocateTimer(2);
-  ESP32PWM::allocateTimer(3);
-
   // ----- Attach Motors -----
   delay(1000);
   mot1.attach(mot1_pin, 1000, 2000);
   delay(1000);
   mot1.setPeriodHertz(ESCfreq);
   delay(100);
+  
   mot2.attach(mot2_pin, 1000, 2000);
   delay(1000);
   mot2.setPeriodHertz(ESCfreq);
   delay(100);
-  mot3.attach(mot3_pin, 1000, 2000);
-  delay(1000);
-  mot3.setPeriodHertz(ESCfreq);
-  delay(100);
-  mot4.attach(mot4_pin, 1000, 2000);
-  delay(1000);
-  mot4.setPeriodHertz(ESCfreq);
-  delay(100);
-
+  
   // Initialize motors to low throttle
   mot1.writeMicroseconds(1000);
   mot2.writeMicroseconds(1000);
-  mot3.writeMicroseconds(1000);
-  mot4.writeMicroseconds(1000);
   delay(500);
 
     // Wait until a valid throttle reading is received via PPM (channel index 2)
@@ -124,14 +109,10 @@ void loop() {
 
   MotorInput1 = InputThrottle;
   MotorInput2 = InputThrottle;
-  MotorInput3 = InputThrottle;
-  MotorInput4 = InputThrottle;
 
-    // ----- Write Motor PWM Signals -----
+  // ----- Write Motor PWM Signals -----
   mot1.writeMicroseconds(MotorInput1);
   mot2.writeMicroseconds(MotorInput2);
-  mot3.writeMicroseconds(MotorInput3);
-  mot4.writeMicroseconds(MotorInput4);
 
   // Optional: Print receiver channels for debugging
   Serial.print("Roll [µs]: "); Serial.print(channelValues[0]);
