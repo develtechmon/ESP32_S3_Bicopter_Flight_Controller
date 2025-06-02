@@ -484,7 +484,8 @@ void loop() {
   ServoInputLeft = constrain(ServoInputLeft, SERVO_MIN, SERVO_MAX);
 
   // If throttle is too low, reset PID integrals and cut motors
-  if (ReceiverValue[2] < 1030) {
+  //if (ReceiverValue[2] < 1030) {
+  if  (channelValues[2] < 1030 {
     MotorInputRight = MotorInputLeft = ThrottleCutOff;
     ServoInputRight = ServoInputLeft = SERVO_CENTER;
     PrevErrorRateRoll = PrevErrorRatePitch = PrevErrorRateYaw = 0;
