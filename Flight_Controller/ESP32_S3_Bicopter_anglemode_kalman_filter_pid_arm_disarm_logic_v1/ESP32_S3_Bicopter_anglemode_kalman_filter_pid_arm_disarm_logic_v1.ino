@@ -1,7 +1,7 @@
 #include <Wire.h>
 #include <math.h>
 #include <Adafruit_NeoPixel.h>
-#include <ESP32Servo.h> // Added for servo control
+#include <ESP32Servo.h>
 
 // ==== Define the pin for the built-in LED. Change this if your board uses a different pin ====
 #define LED_PIN 48  
@@ -15,19 +15,25 @@
 #define CHANNEL_MAX 2000       // Maximum valid pulse width (µs)
 
 // Define your custom I2C pins (change these as needed)
-#define CUSTOM_SDA_PIN 11   // Example: GPI11
-#define CUSTOM_SCL_PIN 12   // Example: GPI12
+#define CUSTOM_SDA_PIN 11   // Example: GPIO3
+#define CUSTOM_SCL_PIN 12   // Example: GPIO4
 
-// Define motor and servo pins
-#define MOTOR_LEFT_PIN 6   // Left motor control pin
-#define MOTOR_RIGHT_PIN 9  // Right motor control pin
-#define SERVO_LEFT_PIN 7   // Left servo control pin
-#define SERVO_RIGHT_PIN 8  // Right servo control pin
+// ===== Servo and Motor Definitions =====
+#define SERVO_RIGHT_PIN 8         // Pin for servo 1 (right servo for pitch/yaw)
+#define SERVO_LEFT_PIN 7         // Pin for servo 2 (left servo for pitch/yaw)
+#define MOTOR_RIGHT_PIN 9        // Pin for motor 1 (right motor) - treated as servo
+#define MOTOR_LEFT_PIN 6        // Pin for motor 2 (left motor) - treated as servo
+#define SERVO_CENTER 1500     // Center position for servos (microseconds)
+#define SERVO_MIN 1000        // Minimum servo position (microseconds)
+#define SERVO_MAX 1900        // Maximum servo position (microseconds)
+
+// Motor ESC frequency (BLHeli_S typically works best at 400Hz or lower)
+int ESCfreq = 400;
 
 // ===== Flight Controller / PID Declarations =====
 uint32_t LoopTimer;
-volatile float MotorInputLeft, MotorInputRight;
-volatile float ServoInputLeft, ServoInputRight;
+volatile float MotorInputRight, MotorInputLeft;  // Only 2 motors for bicopter
+volatile float ServoInputRight, ServoInputLeft;  // Servo inputs for pitch/yaw control
 volatile float RatePitch, RateRoll, RateYaw;
 float RateCalibrationPitch, RateCalibrationRoll, RateCalibrationYaw, AccXCalibration, AccYCalibration, AccZCalibration;
 
@@ -37,38 +43,51 @@ volatile int channelIndex = 0;
 volatile unsigned long lastTime = 0;
 int channelValues[NUM_CHANNELS];
 
-// Angle PID coefficients
-float PAngleRoll = 2, PAnglePitch = 2;
-float IAngleRoll = 0.5, IAnglePitch = 0.5;
-float DAngleRoll = 0.007, DAnglePitch = 0.007;
+// PID parameters for angle control (pitch control is more important in bicopter)
+// float PAngleRoll = 4, PAnglePitch = 4;  // Pitch needs stronger response
+// float IAngleRoll = 0.3, IAnglePitch = 0.8;
+// float DAngleRoll = 0.005, DAnglePitch = 0.01;
 
-// Rate PID coefficients
-float PRateRoll = 0.625, PRatePitch = 0.625;
-float IRateRoll = 2.1, IRatePitch = 2.1;
-float DRateRoll = 0.0088, DRatePitch = DRateRoll;
+// float PAngleRoll = 4, PAnglePitch = 4;  // Pitch stronger for bicopter stability
+// float IAngleRoll = 0.5, IAnglePitch = 0.5;  // Higher I for pitch hold
+// float DAngleRoll = 0.007, DAnglePitch = 0.007; // More damping for pitch
 
-float PRateYaw = 4;
-float IRateYaw = 3;
-float DRateYaw = 0;
+float PAngleRoll = 1.5, PAnglePitch = 2.0;    // Much lower P gains
+float IAngleRoll = 0.1, IAnglePitch = 0.2;    // Very low I gains
+float DAngleRoll = 0.002, DAnglePitch = 0.005; // Low D gains
+
+
+// PID parameters for rate control
+// float PRateRoll = 0.5, PRatePitch = 1.2;    // Pitch needs stronger rate control
+// float IRateRoll = 1.5, IRatePitch = 2.5;
+// float DRateRoll = 0.006, DRatePitch = 0.012;
+
+// float PRateRoll = 0.625, PRatePitch = 0.625;
+// float IRateRoll = 2.1, IRatePitch = 2.1;
+// float DRateRoll = 0.0088, DRatePitch = DRateRoll;
+
+float PRateRoll = 0.3, PRatePitch = 0.4;      // Very low rate P
+float IRateRoll = 0.8, IRatePitch = 1.0;      // Low rate I
+float DRateRoll = 0.003, DRatePitch = 0.005;  // Minimal rate D
+
+// // Yaw control (keep low to prevent oscillations)
+// float PRateYaw = 2.0;
+// float IRateYaw = 1.0;
+// float DRateYaw = 0;
+
+// float PRateYaw = 4;
+// float IRateYaw = 3;
+// float DRateYaw = 0;
+
+float PRateYaw = 0.8;    // Very low yaw P
+float IRateYaw = 0.3;    // Very low yaw I  
+float DRateYaw = 0;      // No yaw D
 
 // Throttle limits
 int ThrottleIdle = 1170;
 int ThrottleCutOff = 1000;
 int led_time = 500;
 
-// Servo center and limits
-int ServoCenter = 1500;  // Center position (90 degrees) in microseconds
-int ServoMin = 1000;     // Minimum servo position
-int ServoMax = 2000;     // Maximum servo position
-int ServoMaxTravel = 400; // Maximum travel from center position (in µs)
-
-// Motor ESC frequency (BLHeli_S typically works best at 400Hz or lower)
-int ESCfreq = 400;
-
-// Joystick deadzone (to prevent small movements from affecting control)
-const int DEADZONE = 30;
-
-// PID terms and outputs
 volatile float PtermRoll;
 volatile float ItermRoll;
 volatile float DtermRoll;
@@ -81,15 +100,12 @@ volatile float PtermYaw;
 volatile float ItermYaw;
 volatile float DtermYaw;
 volatile float PIDOutputYaw;
-volatile float KalmanGainPitch;
-volatile float KalmanGainRoll;
 
 volatile float DesiredRateRoll, DesiredRatePitch, DesiredRateYaw;
 volatile float ErrorRateRoll, ErrorRatePitch, ErrorRateYaw;
 volatile float InputRoll, InputThrottle, InputPitch, InputYaw;
 volatile float PrevErrorRateRoll, PrevErrorRatePitch, PrevErrorRateYaw;
 volatile float PrevItermRateRoll, PrevItermRatePitch, PrevItermRateYaw;
-volatile float PIDReturn[] = {0, 0, 0};
 
 // Kalman filters for angle estimation
 volatile float AccX, AccY, AccZ;
@@ -105,11 +121,15 @@ volatile float PrevItermAngleRoll, PrevItermAnglePitch;
 // Battery Parameters
 float Voltage;
 
-// Create servo objects for motors (ESCs) and servos
-Servo motorLeft;
-Servo motorRight;
-Servo servoLeft;
-Servo servoRight;
+// PWM configuration: Not needed anymore - using servo control for motors
+// const int pwmFrequency = 20000; // No longer needed
+// const int pwmResolution = 8;    // No longer needed
+
+// Motor and servo objects
+Servo servoRight;  // Right servo (controls pitch and yaw)
+Servo servoLeft;  // Left servo (controls pitch and yaw - mirrored)
+Servo motorRight;  // Right motor (A2212/15T) - controlled as servo
+Servo motorLeft;  // Left motor (A2212/15T) - controlled as servo
 
 // Time step (seconds)
 const float t = 0.004; 
@@ -154,14 +174,6 @@ void read_receiver(int *channelValues) {
   interrupts();
 }
 
-// Apply deadzone to joystick inputs
-int applyDeadzone(int value, int center, int deadzone) {
-  if (abs(value - center) < deadzone) {
-    return center;
-  }
-  return value;
-}
-
 // ===== Simple 1D Kalman Filter =====
 void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, float KalmanMeasurement) {
   KalmanState = KalmanState + (t * KalmanInput);
@@ -175,8 +187,6 @@ void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, fl
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Bicopter Flight Controller Initializing...");
-  
   pinMode(LED_BUILTIN, OUTPUT);
 
   strip.begin();       // Initialize the NeoPixel strip
@@ -209,43 +219,43 @@ void setup() {
   ESP32PWM::allocateTimer(1);
   ESP32PWM::allocateTimer(2);
   ESP32PWM::allocateTimer(3);
-  
+
   // ----- Initialize Motors (ESCs) -----
   Serial.println("Initializing ESCs...");
   delay(1000);
-  
-  motorLeft.attach(MOTOR_LEFT_PIN, 1000, 2000);
-  delay(500);
-  motorLeft.setPeriodHertz(ESCfreq);
-  
-  motorRight.attach(MOTOR_RIGHT_PIN, 1000, 2000);
+
+  // ----- Setup PWM for Motor Drivers - Now using Servo control -----
+  motorRight.attach(MOTOR_RIGHT_PIN,1000,2000);
   delay(500);
   motorRight.setPeriodHertz(ESCfreq);
-  
+
+  motorLeft.attach(MOTOR_LEFT_PIN,1000,2000);
+  delay(500);
+  motorLeft.setPeriodHertz(ESCfreq);
+
   // Start with minimum throttle for ESC initialization
-  motorLeft.writeMicroseconds(1000);
   motorRight.writeMicroseconds(1000);
-  delay(3000);  // Give ESCs time to initialize
+  motorLeft.writeMicroseconds(1000);
+  delay(2000);  // Give ESCs time to initialize
 
   // ----- Setup Servos -----
-  servoLeft.setPeriodHertz(50); // Standard 50Hz servo
   servoRight.setPeriodHertz(50);
-  servoLeft.attach(SERVO_LEFT_PIN, ServoMin, ServoMax);
-  servoRight.attach(SERVO_RIGHT_PIN, ServoMin, ServoMax);
+  servoLeft.setPeriodHertz(50);
+  servoRight.attach(SERVO_RIGHT_PIN, SERVO_MIN, SERVO_MAX);
+  servoLeft.attach(SERVO_LEFT_PIN, SERVO_MIN, SERVO_MAX);
   
-  // Center the servos
-  servoLeft.writeMicroseconds(ServoCenter);
-  servoRight.writeMicroseconds(ServoCenter);
+  // Initialize servos to center position
+  servoRight.writeMicroseconds(SERVO_CENTER);
+  servoLeft.writeMicroseconds(SERVO_CENTER);
   delay(1000);
 
-  // ----- Calibration Values -----
-  // ----- 8520 Motor -----
-  RateCalibrationRoll  = -1.91;
-  RateCalibrationPitch = 1.77;
-  RateCalibrationYaw   = 0.28;
-  AccXCalibration = 0.02;
-  AccYCalibration = 0.00;
-  AccZCalibration = 0.09;
+  // ----- Calibration Values for A2212 Motors -----
+  RateCalibrationRoll=-1.98;
+  RateCalibrationPitch=1.96;
+  RateCalibrationYaw=0.38;
+  AccXCalibration=0.06;
+  AccYCalibration=-0.01;
+  AccZCalibration=-0.08;
 
   // Green LED to indicate normal startup
   strip.setPixelColor(0, strip.Color(0, 255, 0));
@@ -254,35 +264,17 @@ void setup() {
   strip.setPixelColor(0, strip.Color(0, 0, 0));
   strip.show();
 
-  Serial.println("Waiting for low throttle position...");
-  // Wait until a valid throttle reading is received via PPM (channel index 2)
-  while (true) {
-    read_receiver(channelValues);
-    // Wait until throttle is at minimum position
-    if (channelValues[2] < 1100) {
-      Serial.println("Throttle at minimum. Ready!");
-      break;
-    }
-    delay(100);
-  }
-
   LoopTimer = micros();
 }
 
 void loop() {
   read_receiver(channelValues);
 
-  // Apply deadzone to control inputs
-  int roll = applyDeadzone(channelValues[0], 1500, DEADZONE);
-  int pitch = applyDeadzone(channelValues[1], 1500, DEADZONE);
-  int throttle = channelValues[2]; // No deadzone for throttle
-  int yaw = applyDeadzone(channelValues[3], 1500, DEADZONE);
-
   // ----- Arming/Disarming Logic -----
-  // Check if throttle is low enough to allow arming/disarming
-  if (throttle < 1050) {
-    // To arm: yaw stick to right
-    if (!armed && yaw > 1900) {
+  // Check if throttle (channel 2) is low enough to allow arming/disarming
+  if (channelValues[2] < 1050) {
+    // To arm: yaw (channel 3) high
+    if (!armed && channelValues[3] > 1900) {
       if (armDisarmTimer == 0) {
         armDisarmTimer = millis();
       } else if (millis() - armDisarmTimer > armHoldTime) {
@@ -293,12 +285,11 @@ void loop() {
         delay(1000);
         strip.setPixelColor(0, strip.Color(0, 0, 0));
         strip.show();
-        Serial.println("ARMED");
         armDisarmTimer = 0;
       }
     }
-    // To disarm: yaw stick to left
-    else if (armed && yaw < 1100) {
+    // To disarm: yaw (channel 3) low
+    else if (armed && channelValues[3] < 1100) {
       if (armDisarmTimer == 0) {
         armDisarmTimer = millis();
       } else if (millis() - armDisarmTimer > armHoldTime) {
@@ -309,7 +300,6 @@ void loop() {
         delay(1000);
         strip.setPixelColor(0, strip.Color(0, 0, 0));
         strip.show();
-        Serial.println("DISARMED");
         armDisarmTimer = 0;
       }
     } else {
@@ -321,21 +311,19 @@ void loop() {
   
   // If not armed, immediately cut off motor output and reset PID integrals
   if (!armed) {
-    MotorInputLeft = MotorInputRight = ThrottleCutOff;
-    ServoInputLeft = ServoInputRight = ServoCenter;
-    
+    MotorInputRight = MotorInputLeft = ThrottleCutOff;
+    ServoInputRight = ServoInputLeft = SERVO_CENTER;
     PrevErrorRateRoll = PrevErrorRatePitch = PrevErrorRateYaw = 0;
     PrevItermRateRoll = PrevItermRatePitch = PrevItermRateYaw = 0;
     PrevErrorAngleRoll = PrevErrorAnglePitch = 0;
     PrevItermAngleRoll = PrevItermAnglePitch = 0;
     
-    // Update motor outputs (ESCs)
-    motorLeft.writeMicroseconds(MotorInputLeft);
+    // Update motor and servo outputs
     motorRight.writeMicroseconds(MotorInputRight);
+    motorLeft.writeMicroseconds(MotorInputLeft);
     
-    // Center servos
-    servoLeft.writeMicroseconds(ServoCenter);
-    servoRight.writeMicroseconds(ServoCenter);
+    servoRight.writeMicroseconds(ServoInputRight);
+    servoLeft.writeMicroseconds(ServoInputLeft);
     
     while (micros() - LoopTimer < (t * 1000000));
     LoopTimer = micros();
@@ -405,10 +393,10 @@ void loop() {
   KalmanAnglePitch = (KalmanAnglePitch > 20) ? 20 : ((KalmanAnglePitch < -20) ? -20 : KalmanAnglePitch);
 
   // ----- Set Desired Angles and Throttle from Receiver Inputs -----
-  DesiredAngleRoll  = 0.1 * (roll - 1500);
-  DesiredAnglePitch = 0.1 * (pitch - 1500);  // Direct mapping: stick down = positive angle
-  InputThrottle     = throttle;
-  DesiredRateYaw    = 0.15 * (yaw - 1500);
+  DesiredAngleRoll  = 0.1 * (ReceiverValue[0] - 1500);
+  DesiredAnglePitch = 0.1 * (ReceiverValue[1] - 1500);
+  InputThrottle     = ReceiverValue[2];
+  DesiredRateYaw    = 0.15 * (ReceiverValue[3] - 1500);
 
   // --- Angle PID for Roll ---
   ErrorAngleRoll = DesiredAngleRoll - KalmanAngleRoll;
@@ -467,99 +455,51 @@ void loop() {
   PrevErrorRateYaw = ErrorRateYaw;
   PrevItermRateYaw = ItermYaw;
 
-  // Limit throttle to maximum value
   if (InputThrottle > 2000) { 
     InputThrottle = 2000;
   }
 
-  // Smooth throttle transitions to prevent sudden jumps
-  static float lastThrottle = 1000;
-  float maxChange = 20; // Max allowed change per loop
+  // ----- BICOPTER MIXING -----
+  // For bicopter: 2 motors provide lift and roll control, 2 servos provide pitch and yaw control
   
-  // Limit the rate of throttle change
-  if (InputThrottle > lastThrottle + maxChange)
-    InputThrottle = lastThrottle + maxChange;
-  else if (InputThrottle < lastThrottle - maxChange)
-    InputThrottle = lastThrottle - maxChange;
-    
-  lastThrottle = InputThrottle;
+  // Motor mixing: differential thrust for roll control
+  // MotorInputLeft = InputThrottle - InputRoll;  // Left motor
+  // MotorInputRight = InputThrottle + InputRoll;  // Right motor
+  
+  MotorInputLeft = InputThrottle - (InputRoll * 0.5);   // Reduced roll authority
+  MotorInputRight = InputThrottle + (InputRoll * 0.5);  // Reduced roll authority
 
-  // ----- Motor and Servo Mixing for Bicopter Configuration -----
-  
-  // 1. Motors control throttle and ROLL
-  // For roll: increase left motor, decrease right motor (or vice versa)
-  MotorInputLeft = InputThrottle - InputRoll;
-  MotorInputRight = InputThrottle + InputRoll;
-  
-  // 2. Servos control PITCH and YAW - SIMPLIFIED AND CORRECTED
-  // Direct servo control based on PID outputs
-  // When InputPitch is POSITIVE (nose should go down), servos tilt FORWARD
-  // When InputPitch is NEGATIVE (nose should go up), servos tilt BACKWARD
-  
-  // Scale the PID outputs to servo range (reduce sensitivity)
-  float pitchServoCommand = InputPitch * 0.5;  // Reduce sensitivity
-  float yawServoCommand = InputYaw * 0.5;      // Reduce sensitivity
-  
-  // Apply servo mixing:
-  // For pitch: both servos move in same direction relative to their mounting
-  // For yaw: servos move in opposite directions to create rotation
-  
-  // Left servo: 
-  // - Pitch down (positive InputPitch): decrease value (tilt forward)
-  // - Yaw right (positive InputYaw): decrease value (tilt outward)
-  ServoInputLeft = ServoCenter - pitchServoCommand - yawServoCommand;
-  
-  // Right servo (mirrored mounting):
-  // - Pitch down (positive InputPitch): increase value (tilt forward - mirrored)
-  // - Yaw right (positive InputYaw): decrease value (tilt outward - same as left)
-  ServoInputRight = ServoCenter + pitchServoCommand - yawServoCommand;
-  
-  // Clamp outputs to safe ranges
-  MotorInputLeft = constrain(MotorInputLeft, ThrottleIdle, 2000);
+  // Servo mixing: collective for pitch, differential for yaw
+  // When controller pitch is pushed down, both servos should tilt motors down (forward pitch)
+  // When controller yaw is pushed, servos should move opposite to each other
+  ServoInputLeft = SERVO_CENTER - InputPitch - InputYaw;  // Left servo (mirrored for yaw)
+  ServoInputRight = SERVO_CENTER + InputPitch - InputYaw;  // Right servo
+
+  // Clamp motor outputs to safe range
   MotorInputRight = constrain(MotorInputRight, ThrottleIdle, 2000);
-  ServoInputLeft = constrain(ServoInputLeft, ServoMin, ServoMax);
-  ServoInputRight = constrain(ServoInputRight, ServoMin, ServoMax);
+  MotorInputLeft = constrain(MotorInputLeft, ThrottleIdle, 2000);
+
+  // Clamp servo outputs to safe range
+  ServoInputRight = constrain(ServoInputRight, SERVO_MIN, SERVO_MAX);
+  ServoInputLeft = constrain(ServoInputLeft, SERVO_MIN, SERVO_MAX);
 
   // If throttle is too low, reset PID integrals and cut motors
-  if (throttle < 1030) {
-    MotorInputLeft = MotorInputRight = ThrottleCutOff;
-    ServoInputLeft = ServoInputRight = ServoCenter;
-    
+  if (ReceiverValue[2] < 1030) {
+    MotorInputRight = MotorInputLeft = ThrottleCutOff;
+    ServoInputRight = ServoInputLeft = SERVO_CENTER;
     PrevErrorRateRoll = PrevErrorRatePitch = PrevErrorRateYaw = 0;
     PrevItermRateRoll = PrevItermRatePitch = PrevItermRateYaw = 0;
     PrevErrorAngleRoll = PrevErrorAnglePitch = 0;
     PrevItermAngleRoll = PrevItermAnglePitch = 0;
   }
 
-  // Update motor outputs (ESCs)
-  motorLeft.writeMicroseconds(MotorInputLeft);
+  // --- Update motor and servo outputs using writeMicroseconds ---
   motorRight.writeMicroseconds(MotorInputRight);
-  
-  // Update servo positions
-  servoLeft.writeMicroseconds(ServoInputLeft);
+  motorLeft.writeMicroseconds(MotorInputLeft);
+
+  // Update servo positions using writeMicroseconds as requested
   servoRight.writeMicroseconds(ServoInputRight);
-  
-  // Debug output - more comprehensive
-  Serial.print("Roll: ");
-  Serial.print(roll);
-  Serial.print(" Pitch: ");
-  Serial.print(pitch);
-  Serial.print(" Throttle: ");
-  Serial.print(throttle);
-  Serial.print(" Yaw: ");
-  Serial.print(yaw);
-  Serial.print(" | KRoll: ");
-  Serial.print(KalmanAngleRoll);
-  Serial.print(" KPitch: ");
-  Serial.print(KalmanAnglePitch);
-  Serial.print(" | M-L: ");
-  Serial.print(MotorInputLeft);
-  Serial.print(" M-R: ");
-  Serial.print(MotorInputRight);
-  Serial.print(" | S-L: ");
-  Serial.print(ServoInputLeft);
-  Serial.print(" S-R: ");
-  Serial.println(ServoInputRight);
+  servoLeft.writeMicroseconds(ServoInputLeft);
 
   while (micros() - LoopTimer < (t * 1000000));
   LoopTimer = micros();
