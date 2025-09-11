@@ -74,20 +74,38 @@ float AccZCalibration = 0.08;
 
 // ==== PID Gains ====
 // Angle PID (outer loop)
+// float PAngleRoll = 1.5;
+// float IAngleRoll = 0.3;
+// float DAngleRoll = 0.01;
+// float PAnglePitch = 1.8;
+// float IAnglePitch = 0.3;
+// float DAnglePitch = 0.01;
+
+// // Rate PID (inner loop)
+// float PRateRoll = 0.5;
+// float IRateRoll = 1.5;
+// float DRateRoll = 0.008;
+// float PRatePitch = 0.6;
+// float IRatePitch = 1.8;
+// float DRatePitch = 0.01;
+// float PRateYaw = 0.8;
+// float IRateYaw = 1.2;
+// float DRateYaw = 0.005;
+
 float PAngleRoll = 1.5;
 float IAngleRoll = 0.3;
 float DAngleRoll = 0.01;
-float PAnglePitch = 1.8;
-float IAnglePitch = 0.3;
-float DAnglePitch = 0.01;
+float PAnglePitch = PAngleRoll;
+float IAnglePitch = IAngleRoll;
+float DAnglePitch = DAngleRoll;
 
 // Rate PID (inner loop)
 float PRateRoll = 0.5;
 float IRateRoll = 1.5;
 float DRateRoll = 0.008;
-float PRatePitch = 0.6;
-float IRatePitch = 1.8;
-float DRatePitch = 0.01;
+float PRatePitch = PRateRoll;
+float IRatePitch = IRateRoll;
+float DRatePitch = DRateRoll;
 float PRateYaw = 0.8;
 float IRateYaw = 1.2;
 float DRateYaw = 0.005;
@@ -106,6 +124,8 @@ float PrevItermRateRoll = 0, PrevItermRatePitch = 0, PrevItermRateYaw = 0;
 float InputRoll, InputPitch, InputYaw, InputThrottle;
 float MotorInputRight, MotorInputLeft;
 float ServoInputRight, ServoInputLeft;
+float filteredServoRight, filteredServoLeft;
+const float SERVO_ALPHA = 0.75;  // This is your main tuning parameter
 
 // ==== Arming Variables ====
 bool armed = false;
@@ -445,7 +465,10 @@ void loop() {
   // Servos control pitch and yaw
   ServoInputLeft = SERVO_CENTER - InputPitch * 2.0 - InputYaw * 1.5;
   ServoInputRight = SERVO_CENTER + InputPitch * 2.0 - InputYaw * 1.5;
-  
+
+  filteredServoLeft = SERVO_ALPHA * ServoInputLeft + (1 - SERVO_ALPHA) * filteredServoLeft;
+  filteredServoRight = SERVO_ALPHA * ServoInputRight + (1 - SERVO_ALPHA) * filteredServoLeft;
+
   // Apply limits
   MotorInputRight = constrain_float(MotorInputRight, ThrottleIdle, 2000);
   MotorInputLeft = constrain_float(MotorInputLeft, ThrottleIdle, 2000);
@@ -458,14 +481,16 @@ void loop() {
     MotorInputLeft = ThrottleCutOff;
     ServoInputRight = SERVO_CENTER;
     ServoInputLeft = SERVO_CENTER;
+    filteredServoLeft = SERVO_CENTER;
+    filteredServoRight = SERVO_CENTER;
     reset_pid();
   }
   
   // Write outputs
   motorRight.writeMicroseconds(MotorInputRight);
   motorLeft.writeMicroseconds(MotorInputLeft);
-  servoRight.writeMicroseconds(ServoInputRight);
-  servoLeft.writeMicroseconds(ServoInputLeft);
+  servoRight.writeMicroseconds(filteredServoRight);
+  servoLeft.writeMicroseconds(filteredServoLeft);
   
   // Maintain loop timing
   while (micros() - LoopTimer < (dt * 1000000));
