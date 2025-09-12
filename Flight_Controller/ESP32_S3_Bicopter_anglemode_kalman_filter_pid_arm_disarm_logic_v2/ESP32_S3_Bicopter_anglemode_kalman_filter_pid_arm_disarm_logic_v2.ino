@@ -28,8 +28,8 @@
 
 // ==== Servo Configuration ====
 #define SERVO_CENTER 1500
-#define SERVO_MIN 1100
-#define SERVO_MAX 1900
+#define SERVO_MIN 1200
+#define SERVO_MAX 1800
 
 // ==== ESC Configuration ====
 int ESCfreq = 400;
@@ -66,9 +66,9 @@ float KalmanUncertaintyAnglePitch = 4;
 
 // ==== Calibration Values ====
 float RateCalibrationRoll = -1.97;
-float RateCalibrationPitch = 1.83;
-float RateCalibrationYaw = 0.34;
-float AccXCalibration = 0.01;
+float RateCalibrationPitch = 1.85;
+float RateCalibrationYaw = 0.33;
+float AccXCalibration = 0.03;
 float AccYCalibration = 0.01;
 float AccZCalibration = 0.08;
 
@@ -124,8 +124,21 @@ float PrevItermRateRoll = 0, PrevItermRatePitch = 0, PrevItermRateYaw = 0;
 float InputRoll, InputPitch, InputYaw, InputThrottle;
 float MotorInputRight, MotorInputLeft;
 float ServoInputRight, ServoInputLeft;
-float filteredServoRight, filteredServoLeft;
-const float SERVO_ALPHA = 0.75;  // This is your main tuning parameter
+
+// ==== Servo Filtering Variables ====
+float filteredServoLeft = SERVO_CENTER;
+float filteredServoRight = SERVO_CENTER;
+const float SERVO_ALPHA = 0.2;  // This is your main tuning parameter
+
+// ==== Derivative Filtering ====
+float filteredDRatePitch = 0;
+float filteredDRateYaw = 0;
+const float D_FILTER_ALPHA = 0.15;  // Strong filtering for D-terms
+
+// ==== Rate Limiting for Servos ====
+float prevServoLeft = SERVO_CENTER;
+float prevServoRight = SERVO_CENTER;
+const float MAX_SERVO_RATE = 100;  // Max microseconds change per loop
 
 // ==== Arming Variables ====
 bool armed = false;
@@ -139,6 +152,7 @@ void read_imu();
 void kalman_1d(float& KalmanState, float& KalmanUncertainty, float KalmanInput, float KalmanMeasurement);
 void reset_pid();
 float constrain_float(float value, float min_val, float max_val);
+float rate_limit(float current, float previous, float max_rate);
 
 // ==== PPM Interrupt Handler ====
 void IRAM_ATTR ppmInterruptHandler() {
@@ -240,6 +254,10 @@ void reset_pid() {
   PrevItermRateRoll = 0;
   PrevItermRatePitch = 0;
   PrevItermRateYaw = 0;
+  filteredServoLeft = SERVO_CENTER;
+  filteredServoRight = SERVO_CENTER;
+  prevServoLeft = SERVO_CENTER;
+  prevServoRight = SERVO_CENTER;
 }
 
 // ==== Constrain Float ====
@@ -247,6 +265,19 @@ float constrain_float(float value, float min_val, float max_val) {
   if (value < min_val) return min_val;
   if (value > max_val) return max_val;
   return value;
+}
+
+// ==== Rate Limiter ====
+float rate_limit(float current, float previous, float max_rate) {
+  float delta = current - previous;
+  if (abs(delta) > max_rate) {
+    if (delta > 0) {
+      return previous + max_rate;
+    } else {
+      return previous - max_rate;
+    }
+  }
+  return current;
 }
 
 // ==== Setup ====
@@ -317,6 +348,12 @@ void setup() {
   servoRight.writeMicroseconds(SERVO_CENTER);
   servoLeft.writeMicroseconds(SERVO_CENTER);
   delay(1000);
+
+  // Initialize filter states
+  filteredServoLeft = SERVO_CENTER;
+  filteredServoRight = SERVO_CENTER;
+  prevServoLeft = SERVO_CENTER;
+  prevServoRight = SERVO_CENTER;
   
   // Ready signal
   strip.setPixelColor(0, strip.Color(0, 255, 0));
@@ -397,8 +434,22 @@ void loop() {
   KalmanAnglePitch = constrain_float(KalmanAnglePitch, -20, 20);
   
   // Get desired values from transmitter
-  DesiredAngleRoll = 0.1 * (channelValues[0] - 1500);
-  DesiredAnglePitch = 0.1 * (channelValues[1] - 1500);
+  // DesiredAngleRoll = 0.1 * (channelValues[0] - 1500);
+  // DesiredAnglePitch = 0.1 * (channelValues[1] - 1500);
+  // InputThrottle = channelValues[2];
+  // DesiredRateYaw = 0.15 * (channelValues[3] - 1500);
+
+  // Get desired values from transmitter with expo for smoother control
+  float rollStick = (channelValues[0] - 1500) / 500.0;  // Normalize to -1 to 1
+  float pitchStick = (channelValues[1] - 1500) / 500.0;
+
+  // Apply expo curve for gentler center stick movement
+  float expo = 0.3;  // 30% expo
+  rollStick = rollStick * (abs(rollStick) * expo + (1 - expo));
+  pitchStick = pitchStick * (abs(pitchStick) * expo + (1 - expo));
+  
+  DesiredAngleRoll = rollStick * 15;    // Max 15 degrees roll
+  DesiredAnglePitch = pitchStick * 15;  // Max 15 degrees pitch
   InputThrottle = channelValues[2];
   DesiredRateYaw = 0.15 * (channelValues[3] - 1500);
   
@@ -440,7 +491,9 @@ void loop() {
   float ItermRatePitch = PrevItermRatePitch + IRatePitch * (ErrorRatePitch + PrevErrorRatePitch) * dt / 2;
   ItermRatePitch = constrain_float(ItermRatePitch, -300, 300);
   float DtermRatePitch = DRatePitch * (ErrorRatePitch - PrevErrorRatePitch) / dt;
-  InputPitch = constrain_float(PtermRatePitch + ItermRatePitch + DtermRatePitch, -400, 400);
+  filteredDRatePitch = D_FILTER_ALPHA * DtermRatePitch + (1 - D_FILTER_ALPHA) * filteredDRatePitch;
+  InputPitch = constrain_float(PtermRatePitch + ItermRatePitch + filteredDRatePitch, -400, 400);
+  //InputPitch = constrain_float(PtermRatePitch + ItermRatePitch + DtermRatePitch, -400, 400);
   PrevErrorRatePitch = ErrorRatePitch;
   PrevItermRatePitch = ItermRatePitch;
   
@@ -450,7 +503,9 @@ void loop() {
   float ItermRateYaw = PrevItermRateYaw + IRateYaw * (ErrorRateYaw + PrevErrorRateYaw) * dt / 2;
   ItermRateYaw = constrain_float(ItermRateYaw, -300, 300);
   float DtermRateYaw = DRateYaw * (ErrorRateYaw - PrevErrorRateYaw) / dt;
-  InputYaw = constrain_float(PtermRateYaw + ItermRateYaw + DtermRateYaw, -400, 400);
+  filteredDRateYaw = D_FILTER_ALPHA * DtermRateYaw + (1 - D_FILTER_ALPHA) * filteredDRateYaw;
+  InputYaw = constrain_float(PtermRateYaw + ItermRateYaw + filteredDRateYaw, -400, 400);
+  //InputYaw = constrain_float(PtermRateYaw + ItermRateYaw + DtermRateYaw, -400, 400);
   PrevErrorRateYaw = ErrorRateYaw;
   PrevItermRateYaw = ItermRateYaw;
   
@@ -463,26 +518,41 @@ void loop() {
   MotorInputRight = InputThrottle + InputRoll * 0.5;
   
   // Servos control pitch and yaw
-  ServoInputLeft = SERVO_CENTER - InputPitch * 2.0 - InputYaw * 1.5;
-  ServoInputRight = SERVO_CENTER + InputPitch * 2.0 - InputYaw * 1.5;
+  // ServoInputLeft = SERVO_CENTER - InputPitch * 2.0 - InputYaw * 1.5;
+  // ServoInputRight = SERVO_CENTER + InputPitch * 2.0 - InputYaw * 1.5;
+  ServoInputLeft = SERVO_CENTER - InputPitch * 1.0 - InputYaw * 0.8;
+  ServoInputRight = SERVO_CENTER + InputPitch * 1.0 - InputYaw * 0.8;
+
+  // Apply rate limiting to prevent sudden servo movements
+  ServoInputLeft = rate_limit(ServoInputLeft, prevServoLeft, MAX_SERVO_RATE);
+  ServoInputRight = rate_limit(ServoInputRight, prevServoRight, MAX_SERVO_RATE);
 
   filteredServoLeft = SERVO_ALPHA * ServoInputLeft + (1 - SERVO_ALPHA) * filteredServoLeft;
-  filteredServoRight = SERVO_ALPHA * ServoInputRight + (1 - SERVO_ALPHA) * filteredServoLeft;
+  filteredServoRight = SERVO_ALPHA * ServoInputRight + (1 - SERVO_ALPHA) * filteredServoRight;
+
+  // Constrain filtered servo values
+  filteredServoLeft = constrain_float(filteredServoLeft, SERVO_MIN, SERVO_MAX);
+  filteredServoRight = constrain_float(filteredServoRight, SERVO_MIN, SERVO_MAX);
+
+  // Update previous servo values for rate limiting
+  prevServoLeft = ServoInputLeft;
+  prevServoRight = ServoInputRight;
 
   // Apply limits
   MotorInputRight = constrain_float(MotorInputRight, ThrottleIdle, 2000);
   MotorInputLeft = constrain_float(MotorInputLeft, ThrottleIdle, 2000);
-  ServoInputRight = constrain_float(ServoInputRight, SERVO_MIN, SERVO_MAX);
-  ServoInputLeft = constrain_float(ServoInputLeft, SERVO_MIN, SERVO_MAX);
+
+  //ServoInputRight = constrain_float(ServoInputRight, SERVO_MIN, SERVO_MAX);
+  //ServoInputLeft = constrain_float(ServoInputLeft, SERVO_MIN, SERVO_MAX);
   
   // Emergency stop
   if (channelValues[2] < 1030) {
     MotorInputRight = ThrottleCutOff;
     MotorInputLeft = ThrottleCutOff;
-    ServoInputRight = SERVO_CENTER;
-    ServoInputLeft = SERVO_CENTER;
     filteredServoLeft = SERVO_CENTER;
     filteredServoRight = SERVO_CENTER;
+    prevServoLeft = SERVO_CENTER;
+    prevServoRight = SERVO_CENTER;
     reset_pid();
   }
   
