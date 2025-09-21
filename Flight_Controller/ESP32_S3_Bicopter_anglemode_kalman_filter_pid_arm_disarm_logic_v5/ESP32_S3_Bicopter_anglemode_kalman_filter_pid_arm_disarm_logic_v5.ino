@@ -79,12 +79,12 @@ float KalmanUncertaintyAnglePitch = 4;
 // float AccYCalibration = 0.01;
 // float AccZCalibration = 0.08;
 
-float RateCalibrationRoll = -4.80;
-float RateCalibrationPitch = 0.93;
-float RateCalibrationYaw = -0.67;
-float AccXCalibration = 0.01;
-float AccYCalibration = -0.02;
-float AccZCalibration = 0.05;
+float RateCalibrationRoll = -4.86;
+float RateCalibrationPitch = 0.91;
+float RateCalibrationYaw = -0.49;
+float AccXCalibration = 0.02;
+float AccYCalibration = 0.01;
+float AccZCalibration = 0.06;
 
 // ==== PID Gains ====
 float PAngleRoll = 1.5;
