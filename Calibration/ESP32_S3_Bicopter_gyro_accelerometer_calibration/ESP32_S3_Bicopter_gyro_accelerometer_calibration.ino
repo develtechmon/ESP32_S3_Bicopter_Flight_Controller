@@ -12,8 +12,8 @@ int RateCalibrationNumber;
 float calAccX, calAccY, calAccZ;
 
 // Define your custom I2C pins (change these as needed)
-#define CUSTOM_SDA_PIN 11   // Example: GPI11
-#define CUSTOM_SCL_PIN 12   // Example: GPI12
+#define CUSTOM_SDA_PIN 4   // Example: GPIO4
+#define CUSTOM_SCL_PIN 5   // Example: GPIO5
 
 void setup() {
   Serial.begin(115200);
