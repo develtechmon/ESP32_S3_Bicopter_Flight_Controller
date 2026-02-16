@@ -102,11 +102,11 @@ float KalmanUncertaintyAnglePitch = 4;
 volatile float Kalman1DOutput[]   = {0, 0};
 
 // ==== Calibration Values ====
-float RateCalibrationRoll  =  1.73;
-float RateCalibrationPitch = -0.30;
-float RateCalibrationYaw   =  0.39;
-float AccXCalibration      =  0.01;
-float AccYCalibration      = -0.03;
+float RateCalibrationRoll  =  1.71;
+float RateCalibrationPitch = -0.38;
+float RateCalibrationYaw   =  0.47;
+float AccXCalibration      = -0.04;
+float AccYCalibration      = -0.02;
 float AccZCalibration      =  0.08;
 
 // ==== Angle PID Gains ====
@@ -118,7 +118,7 @@ float PAnglePitch = 3.0,  IAnglePitch = 0.0,  DAnglePitch = 0.0;  // raised, I/D
 
 // ==== Rate PID Gains ====
 float PRateRoll  = 0.5,  IRateRoll  = 1.5,  DRateRoll  = 0.008;
-float PRatePitch = 1.5,  IRatePitch = 0.0,  DRatePitch = 0.0;    // raised, I/D zeroed
+float PRatePitch = 0.5,  IRatePitch = 1.5,  DRatePitch = 0.008;
 float PRateYaw   = 0.8,  IRateYaw   = 1.2,  DRateYaw   = 0.005;
 
 // ==== PID State Variables ====
