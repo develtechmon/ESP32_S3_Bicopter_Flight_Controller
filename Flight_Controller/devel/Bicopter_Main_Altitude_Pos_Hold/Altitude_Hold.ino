@@ -222,9 +222,9 @@ void c_handlePilotAltitudeInput() {
     if (targetAltitude > 300) targetAltitude = 300;
   }
 
-  Serial.print("targetAltitude: ");
-  Serial.print(targetAltitude);
-  Serial.print(" - ");
+  // Serial.print("targetAltitude: ");
+  // Serial.print(targetAltitude);
+  // Serial.print(" - ");
 }
 
 // ================================================================================

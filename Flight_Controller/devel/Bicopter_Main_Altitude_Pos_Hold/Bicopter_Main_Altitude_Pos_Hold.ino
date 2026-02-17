@@ -53,8 +53,8 @@
 #define CUSTOM_SCL_PIN  5
 #define SERVO_RIGHT_PIN 11
 #define SERVO_LEFT_PIN  10
-#define MOTOR_RIGHT_PIN 9
-#define MOTOR_LEFT_PIN  8
+#define MOTOR_RIGHT_PIN 9 // from backward, this should be left
+#define MOTOR_LEFT_PIN  8 // from backwawrd, this should be right
 
 // ==== PPM Configuration ====
 #define NUM_CHANNELS       8
@@ -102,23 +102,23 @@ float KalmanUncertaintyAnglePitch = 4;
 volatile float Kalman1DOutput[]   = {0, 0};
 
 // ==== Calibration Values ====
-float RateCalibrationRoll  =  1.71;
-float RateCalibrationPitch = -0.38;
-float RateCalibrationYaw   =  0.47;
-float AccXCalibration      = -0.04;
-float AccYCalibration      = -0.02;
+float RateCalibrationRoll  =  1.73;
+float RateCalibrationPitch = -0.30;
+float RateCalibrationYaw   =  0.39;
+float AccXCalibration      =  0.01;
+float AccYCalibration      = -0.03;
 float AccZCalibration      =  0.08;
 
 // ==== Angle PID Gains ====
 // Pitch gains raised — servo axis needs more authority than motor axis
-// Trace: 10deg error × PAnglePitch(3.0) = 30 → × PRatePitch(1.5) = 45 InputPitch
+// Angle PID Gains
 // → 45 × 1.5 servo multiplier = 67.5 µs servo movement — visible and controllable
 float PAngleRoll  = 1.5,  IAngleRoll  = 0.3,  DAngleRoll  = 0.01;
-float PAnglePitch = 3.0,  IAnglePitch = 0.0,  DAnglePitch = 0.0;  // raised, I/D zeroed
+float PAnglePitch = 1.5,  IAnglePitch = 0.3,  DAnglePitch = 0.01;
 
 // ==== Rate PID Gains ====
 float PRateRoll  = 0.5,  IRateRoll  = 1.5,  DRateRoll  = 0.008;
-float PRatePitch = 0.5,  IRatePitch = 1.5,  DRatePitch = 0.008;
+float PRatePitch = 0.5,  IRatePitch = 1.5,  DRatePitch = 0.008;    
 float PRateYaw   = 0.8,  IRateYaw   = 1.2,  DRateYaw   = 0.005;
 
 // ==== PID State Variables ====
@@ -226,9 +226,9 @@ float posToVel_Kd = 0.1;
 float vel_Kp_Roll  = 0.35;
 float vel_Ki_Roll  = 0.0;
 float vel_Kd_Roll  = 0.01;
-float vel_Kp_Pitch = 0.35;   // start same as roll — raise if no response
-float vel_Ki_Pitch = 0.0;    // zero until P is stable
-float vel_Kd_Pitch = 0.0;    // zero — D on servo axis causes buzz
+float vel_Kp_Pitch = 0.55;
+float vel_Ki_Pitch = 0.0;
+float vel_Kd_Pitch = 0.01;
 
 // Position PID state
 float posX_error = 0, posX_errorPrev = 0, posX_integral = 0;
@@ -505,19 +505,24 @@ void loop() {
   KalmanAnglePitch = constrain_float(KalmanAnglePitch, -20, 20);
 
   // ---- Desired Angles ----
-  // Both roll and pitch fed through angle+rate PID chain
-  // Correction limits raised — pitch needs more authority than quad to drive servo
   if (positionHoldActive) {
-    DesiredAngleRoll  = 0.1 * (channelValues[0] - 1500) + positionCorrectionRoll;
-    DesiredAnglePitch = 0.1 * (channelValues[1] - 1500) + positionCorrectionPitch;
-    DesiredAngleRoll  = constrain_float(DesiredAngleRoll,  -8,  8);
-    DesiredAnglePitch = constrain_float(DesiredAnglePitch, -10, 10);
+    DesiredAngleRoll  = 0.1f * (channelValues[0] - 1500) + positionCorrectionRoll;
+    DesiredAnglePitch = 0.1f * (channelValues[1] - 1500) + positionCorrectionPitch;
+    DesiredAngleRoll  = constrain_float(DesiredAngleRoll,  -10.0f, 10.0f);
+    DesiredAnglePitch = constrain_float(DesiredAnglePitch, -10.0f, 10.0f);
   } else {
+    DesiredAngleRoll  = 0.1f * (channelValues[0] - 1500);
+    DesiredAnglePitch = 0.1f * (channelValues[1] - 1500);
+    positionCorrectionRoll  = 0.0f;
+    positionCorrectionPitch = 0.0f;
+  }
+
+  //} else {
     DesiredAngleRoll  = 0.1 * (channelValues[0] - 1500);
     DesiredAnglePitch = 0.1 * (channelValues[1] - 1500);
     positionCorrectionRoll  = 0;
     positionCorrectionPitch = 0;
-  }
+  //}
   DesiredRateYaw = 0.15 * (channelValues[3] - 1500);
   InputThrottle = calculateThrottleOutput();
 
