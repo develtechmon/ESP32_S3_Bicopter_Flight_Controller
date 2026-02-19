@@ -51,10 +51,10 @@
 #define PPM_PIN         13
 #define CUSTOM_SDA_PIN  4
 #define CUSTOM_SCL_PIN  5
-#define SERVO_RIGHT_PIN 11
-#define SERVO_LEFT_PIN  10
-#define MOTOR_RIGHT_PIN 9 // from backward, this should be left
-#define MOTOR_LEFT_PIN  8 // from backwawrd, this should be right
+#define SERVO_RIGHT_PIN 11 // from backwawrd, this servo right
+#define SERVO_LEFT_PIN  10 // from backward, this servo left
+#define MOTOR_RIGHT_PIN 9 // from backward, this should be motor left
+#define MOTOR_LEFT_PIN  8 // from backwawrd, this should be motor right
 
 // ==== PPM Configuration ====
 #define NUM_CHANNELS       8
