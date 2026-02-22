@@ -53,8 +53,10 @@
 #define CUSTOM_SCL_PIN  5
 #define SERVO_RIGHT_PIN 11 // from backwawrd, this servo right
 #define SERVO_LEFT_PIN  10 // from backward, this servo left
-#define MOTOR_RIGHT_PIN 9 // from backward, this should be motor left
-#define MOTOR_LEFT_PIN  8 // from backwawrd, this should be motor right
+#define MOTOR_RIGHT_PIN 8 // from backward, this should be motor left
+#define MOTOR_LEFT_PIN  9 // from backwawrd, this should be motor right
+//#define MOTOR_RIGHT_PIN 9 // from backward, this should be motor left
+//#define MOTOR_LEFT_PIN  8 // from backwawrd, this should be motor right
 
 // ==== PPM Configuration ====
 #define NUM_CHANNELS       8
@@ -507,7 +509,7 @@ void loop() {
   // ---- Desired Angles ----
   if (positionHoldActive) {
     DesiredAngleRoll  = 0.1f * (channelValues[0] - 1500) + positionCorrectionRoll;
-    DesiredAnglePitch = 0.1f * (channelValues[1] - 1500) + positionCorrectionPitch;
+    DesiredAnglePitch = 0.1f * (channelValues[1] - 1500) - positionCorrectionPitch;
     DesiredAngleRoll  = constrain_float(DesiredAngleRoll,  -10.0f, 10.0f);
     DesiredAnglePitch = constrain_float(DesiredAnglePitch, -10.0f, 10.0f);
   } else {
@@ -517,12 +519,6 @@ void loop() {
     positionCorrectionPitch = 0.0f;
   }
 
-  //} else {
-    DesiredAngleRoll  = 0.1 * (channelValues[0] - 1500);
-    DesiredAnglePitch = 0.1 * (channelValues[1] - 1500);
-    positionCorrectionRoll  = 0;
-    positionCorrectionPitch = 0;
-  //}
   DesiredRateYaw = 0.15 * (channelValues[3] - 1500);
   InputThrottle = calculateThrottleOutput();
 
@@ -576,8 +572,8 @@ void loop() {
   if (InputThrottle > 1800) InputThrottle = 1800;
 
   // ---- Bicopter Mixing ----
-  MotorInputLeft  = InputThrottle - InputRoll;
-  MotorInputRight = InputThrottle + InputRoll;
+  MotorInputLeft  = InputThrottle + InputRoll;
+  MotorInputRight = InputThrottle - InputRoll;
   ServoInputLeft  = SERVO_CENTER - InputPitch * 1.5 - InputYaw;
   ServoInputRight = SERVO_CENTER + InputPitch * 1.5 - InputYaw;
 
